@@ -217,6 +217,7 @@ class VirtTestLoader(loader.TestLoader):
             params['id'] = test_name
             test_parameters = {'name': test_name,
                                'vt_params': params}
+            open('/tmp/log', 'a').write("%s\n" % test_name)
             test_suite.append((VirtTest, test_parameters))
         if which_tests is loader.DiscoverMode.ALL and not test_suite:
             return self._report_bad_discovery(url, "No matching tests",

@@ -3342,6 +3342,7 @@ class VM(virt_vm.BaseVM):
         :param free_mac_addresses: If True, the MAC addresses used by the VM
                 will be freed.
         """
+        #import remote_pdb; remote_pdb.set_trace(port=9999)
         try:
             # Is it already dead?
             if self.is_dead():

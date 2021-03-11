@@ -178,15 +178,6 @@ class MissingIncludeError(Exception):
                 "file" % (self.line, self.filename, self.linenum))
 
 
-if sys.version_info[0] == 2 and sys.version_info[1] < 6:
-    def enum(iterator, start_pos=0):
-        for i in iterator:
-            yield start_pos, i
-            start_pos += 1
-else:
-    enum = enumerate
-
-
 def _match_adjacent(block, ctx, ctx_set):
     """
     It try to match as many blocks as possible from context.
@@ -1144,7 +1135,7 @@ class Lexer(object):
             yield tokens_oper[m.group()[:-1]]()
             yield LString(line[m.end():].lstrip())
         else:
-            li = enum(line[pos:], pos)
+            li = enumerate(line[pos:], pos)
             for pos, char in li:
                 if char.isalnum() or char in spec_iden:    # alfanum+_-
                     chars += char
