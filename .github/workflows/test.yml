@@ -1,0 +1,67 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: quay.io/avocado-framework/avocado-vt-ci-fedora-35
+    strategy:
+      fail-fast: false
+      matrix:
+        avocado_src:
+          - ''
+          - 'avocado-framework<93.0'
+          - 'avocado-framework<104.0'
+          - 'git+https://github.com/avocado-framework/avocado#egg=avocado_framework'
+          - 'git+https://github.com/avocado-framework/avocado@92lts#egg=avocado_framework'
+          - 'git+https://github.com/avocado-framework/avocado@103lts#egg=avocado_framework'
+        setup:
+          - 'setup.py develop --user'
+          - '-m pip install .'
+          - '-m pip install PYPI_UPLOAD/*.whl'
+        vt_type:
+          - qemu
+          - libvirt
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+            (echo ${{ matrix.setup }} | grep -v PYPI_UPLOAD) || make pypi
+
+      - name: Setup
+        run: |
+            python3 --version
+            test -z ${{ matrix.avocado_src }} || python3 -m pip install "${{ matrix.avocado_src }}"
+            python3 ${{ matrix.setup }}
+
+      - name: Bootstrap
+        run: |
+            # Pin the versions of tp-qemu and tp-libvirt to known working versions.
+            # These versions can be bumped at any time, but provide better understanding
+            # of regressions or version update requirements on the test providers side.
+            python3 -c "from virttest.asset import ConfigLoader; cl = ConfigLoader('virttest/test-providers.d/io-github-autotest-qemu.ini'); cl.set('provider', 'ref', '33ed9b0ac6e4255877ff109a1d91fa84c9097dc5'); cl.save()"
+            python3 -c "from virttest.asset import ConfigLoader; cl = ConfigLoader('virttest/test-providers.d/io-github-autotest-libvirt.ini'); cl.set('provider', 'ref', 'e6af7700f879fe1547bfb1421439121d35c919bd'); cl.save()"
+            python3 -m avocado vt-bootstrap --vt-type=${{ matrix.vt_type }} --vt-skip-verify-download-assets --yes-to-all
+
+      - name: List
+        run: |
+            PATH=~/.local/bin:$PATH python3 -m avocado list --vt-save-config=/tmp/config --vt-type=${{ matrix.vt_type }} -- boot | tee /tmp/list
+            test ${{ matrix.vt_type }} == "qemu" || test $(wc -l < /tmp/list) -gt 50
+            test ${{ matrix.vt_type }} == "libvirt" || test $(wc -l < /tmp/list) -eq 1
+            PATH=~/.local/bin:$PATH python3 -m avocado list --vt-config=/tmp/config --vt-type=${{ matrix.vt_type }} -- boot | tee /tmp/list_from_config
+            diff /tmp/list /tmp/list_from_config
+            python3 -m avocado vt-list-guests --vt-type=${{ matrix.vt_type }}
+            python3 -m avocado vt-list-archs --vt-type=${{ matrix.vt_type }}
+
+      - name: Dry Run
+        run: |
+          PATH=~/.local/bin:$PATH python3 -m avocado --show all run --vt-type=${{ matrix.vt_type }} --dry-run -- io-github-autotest-qemu.boot
+
+      - name: Run tests
+        if: matrix.vt_type != 'libvirt'
+        run: |
+          PATH=~/.local/bin:$PATH python3 -m avocado --show all run --vt-type=${{ matrix.vt_type }} --vt-extra-params nettype=user enable_kvm=no -- io-github-autotest-qemu.boot io-github-autotest-qemu.qemu_disk_img.convert.base_to_raw io-github-autotest-qemu.commit_with_backing.default
